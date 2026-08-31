@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    /* Dark theme to match your dashboard */
+    body { 
+      background-color: #0b1320; 
+      color: #e0e6ed; 
+      font-family: 'Avenir Next', 'Segoe UI', sans-serif; 
+      margin: 0; 
+      padding: 10px; 
+    }
+    
+    /* Compact Table Styling */
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      font-size: 13px; 
+    }
+    
+    th { 
+      background-color: #1a2b4c; 
+      position: sticky; 
+      top: 0; 
+      padding: 8px; 
+      border-bottom: 2px solid #2a4374; 
+      text-align: left; 
+      color: #ffffff;
+    }
+    
+    td { 
+      padding: 8px; 
+      border-bottom: 1px solid #1a2b4c; 
+    }
+    
+    /* Conditional MBA Wind Styling */
+    .wind-advisory { 
+      background-color: #ffcc00; 
+      color: #000; 
+      font-weight: bold; 
+      border-radius: 4px; 
+      padding: 3px 6px; 
+    }
+    
+    .wind-escort { 
+      background-color: #ff6600; 
+      color: #fff; 
+      font-weight: bold; 
+      border-radius: 4px; 
+      padding: 3px 6px; 
+    }
+    
+    .wind-closure { 
+      background-color: #cc0000; 
+      color: #fff; 
+      font-weight: bold; 
+      border-radius: 4px; 
+      padding: 3px 6px; 
+    }
+    
+    #loading { 
+      font-style: italic; 
+      color: #8b949e; 
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">Fetching live NWS data for Mackinac Bridge...</div>
+  
+  <table id="weatherTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Temp</th>
+        <th>Wind Speed</th>
+        <th>Forecast</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <script>
+    // Pre-calculated NWS Gridpoint for the Mackinac Bridge Midpoint (APX 74,67)
+    const apiUrl = "https://api.weather.gov/gridpoints/APX/74,67/forecast/hourly";
+
+    async function fetchWeather() {
+      try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error("Network response was not ok");
+        
+        const data = await response.json();
+        
+        // Grab the next 24 hours of forecast data
+        const periods = data.properties.periods.slice(0, 24); 
+        const tableBody = document.getElementById('tableBody');
+        
+        periods.forEach(period => {
+          const row = document.createElement('tr');
+          
+          // Parse the wind speed integer from the string (e.g., extracts 20 from "20 mph")
+          const windSpeedMatch = period.windSpeed.match(/\d+/);
+          const windSpeedNum = windSpeedMatch ? parseInt(windSpeedMatch[0]) : 0;
+          
+          // Apply color rules based on Mackinac Bridge Authority thresholds
+          let windClass = "";
+          if (windSpeedNum >= 50) {
+            windClass = "wind-closure"; // Partial Closure
+          } else if (windSpeedNum >= 35) {
+            windClass = "wind-escort";  // Escorts Required
+          } else if (windSpeedNum >= 20) {
+            windClass = "wind-advisory"; // High Wind Advisory
+          }
+          
+          // Format the time nicely (e.g., "Mon 2 PM")
+          const date = new Date(period.startTime);
+          const timeString = date.toLocaleTimeString([], {hour: 'numeric', weekday: 'short'});
+
+          row.innerHTML = `
+            <td><strong>${timeString}</strong></td>
+            <td>${period.temperature}&deg;${period.temperatureUnit}</td>
+            <td><span class="${windClass}">${period.windSpeed} ${period.windDirection}</span></td>
+            <td>${period.shortForecast}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+        
+        // Hide loading text and show the table
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('weatherTable').style.display = 'table';
+        
+      } catch (error) {
+        document.getElementById('loading').innerText = "Forecast temporarily unavailable.";
+        console.error("NWS Fetch Error:", error);
+      }
+    }
+    
+    // Execute the function
+    fetchWeather();
+  </script>
+</body>
+</html>
