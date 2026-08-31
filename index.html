@@ -95,7 +95,14 @@
         const data = await response.json();
         
         // Grab the next 24 hours of forecast data
-        const periods = data.properties.periods.slice(0, 36); 
+        // Get the exact time right now
+        const now = new Date();
+        
+        // Filter out any NWS periods where the forecast hour has already passed
+        const futurePeriods = data.properties.periods.filter(period => new Date(period.endTime) > now);
+        
+        // Grab the next 36 hours from the filtered future data
+        const periods = futurePeriods.slice(0, 36);
         const tableBody = document.getElementById('tableBody');
         
         periods.forEach(period => {
