@@ -101,32 +101,46 @@
         periods.forEach(period => {
           const row = document.createElement('tr');
           
-          // Parse the wind speed integer from the string (e.g., extracts 20 from "20 mph")
-          const windSpeedMatch = period.windSpeed.match(/\d+/);
-          const windSpeedNum = windSpeedMatch ? parseInt(windSpeedMatch[0]) : 0;
+          // 1. Extract the specific number from the string (turns "20 mph" into 20)
+          const baseSpeed = parseInt(period.windSpeed) || 0;
           
-          // Apply color rules based on Mackinac Bridge Authority thresholds
+          // 2. Extract the gust number if the NWS is forecasting one
+          let gustSpeed = 0;
+          let gustText = "";
+          if (period.windGust) {
+            gustSpeed = parseInt(period.windGust) || 0;
+            // Only add the extra text if the gust is actually present
+            if (gustSpeed > 0) {
+              gustText = `<br><small><i>Gusts: ${period.windGust}</i></small>`;
+            }
+          }
+          
+          // 3. Find the highest threat (sustained vs gust) for the MBA colors
+          const absoluteMaxWind = Math.max(baseSpeed, gustSpeed);
+          
+          // 4. Apply color rules based on Mackinac Bridge thresholds
           let windClass = "";
-          if (windSpeedNum >= 50) {
+          if (absoluteMaxWind >= 50) {
             windClass = "wind-closure"; // Partial Closure
-          } else if (windSpeedNum >= 35) {
+          } else if (absoluteMaxWind >= 35) {
             windClass = "wind-escort";  // Escorts Required
-          } else if (windSpeedNum >= 20) {
+          } else if (absoluteMaxWind >= 20) {
             windClass = "wind-advisory"; // High Wind Advisory
           }
           
-          // Format the time nicely (e.g., "Mon 2 PM")
-          // Format the time explicitly to Mackinac Bridge Local Time (Eastern Time)
+          // 5. Force Eastern Time for the Straits
           const date = new Date(period.startTime);
           const timeString = date.toLocaleTimeString('en-US', {
             hour: 'numeric', 
             weekday: 'short', 
             timeZone: 'America/Detroit'
           });
+
+          // 6. Build the HTML row
           row.innerHTML = `
             <td><strong>${timeString}</strong></td>
             <td>${period.temperature}&deg;${period.temperatureUnit}</td>
-            <td><span class="${windClass}">${period.windSpeed} ${period.windDirection}</span></td>
+            <td><span class="${windClass}">${period.windSpeed} ${period.windDirection} ${gustText}</span></td>
             <td>${period.shortForecast}</td>
           `;
           tableBody.appendChild(row);
