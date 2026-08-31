@@ -116,9 +116,13 @@
           }
           
           // Format the time nicely (e.g., "Mon 2 PM")
+          // Format the time explicitly to Mackinac Bridge Local Time (Eastern Time)
           const date = new Date(period.startTime);
-          const timeString = date.toLocaleTimeString([], {hour: 'numeric', weekday: 'short'});
-
+          const timeString = date.toLocaleTimeString('en-US', {
+            hour: 'numeric', 
+            weekday: 'short', 
+            timeZone: 'America/Detroit'
+          });
           row.innerHTML = `
             <td><strong>${timeString}</strong></td>
             <td>${period.temperature}&deg;${period.temperatureUnit}</td>
