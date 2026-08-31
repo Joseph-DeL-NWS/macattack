@@ -95,7 +95,7 @@
         const data = await response.json();
         
         // Grab the next 24 hours of forecast data
-        const periods = data.properties.periods.slice(0, 24); 
+        const periods = data.properties.periods.slice(0, 36); 
         const tableBody = document.getElementById('tableBody');
         
         periods.forEach(period => {
