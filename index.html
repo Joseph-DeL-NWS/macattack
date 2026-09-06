@@ -34,7 +34,14 @@
       border-bottom: 1px solid #1a2b4c; 
     }
     
-    /* Conditional MBA Wind Styling */
+    /* Official MBA Wind Threshold Styling */
+    .wind-normal {
+      background-color: #2ea043;
+      color: #fff;
+      font-weight: bold;
+      border-radius: 4px;
+      padding: 3px 6px;
+    }
     .wind-advisory { 
       background-color: #ffcc00; 
       color: #000; 
@@ -42,7 +49,6 @@
       border-radius: 4px; 
       padding: 3px 6px; 
     }
-    
     .wind-escort { 
       background-color: #ff6600; 
       color: #fff; 
@@ -50,7 +56,6 @@
       border-radius: 4px; 
       padding: 3px 6px; 
     }
-    
     .wind-closure { 
       background-color: #cc0000; 
       color: #fff; 
@@ -58,7 +63,19 @@
       border-radius: 4px; 
       padding: 3px 6px; 
     }
+    .wind-full-closure { 
+      background-color: #8b0000; 
+      color: #fff; 
+      font-weight: bold; 
+      border-radius: 4px; 
+      padding: 3px 6px; 
+      animation: blinker 1.5s linear infinite;
+    }
     
+    @keyframes blinker {
+      50% { opacity: 0.5; }
+    }
+
     #loading { 
       font-style: italic; 
       color: #8b949e; 
@@ -69,91 +86,124 @@
 </head>
 <body>
 
-  <div id="loading">Fetching live NWS data for Mackinac Bridge...</div>
+  <div id="loading">Fetching live high-precision NWS grid data for Mackinac Bridge...</div>
   
   <table id="weatherTable" style="display:none;">
     <thead>
       <tr>
         <th>Time</th>
         <th>Temp</th>
-        <th>Wind Speed</th>
-        <th>Forecast</th>
+        <th>Wind Speed (Mid-Span)</th>
+        <th>Risk Level</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
   </table>
 
   <script>
-    // Pre-calculated NWS Gridpoint for the Mackinac Bridge Midpoint (APX 74,67)
-    const apiUrl = "https://api.weather.gov/gridpoints/APX/74,67/forecast/hourly";
+    // Exact Coordinates for Mackinac Bridge Mid-Span
+    const LAT = 45.816;
+    const LON = -84.727; 
+    const pointsUrl = `https://api.weather.gov/points/${LAT},${LON}`;
+
+    // Helper Function to parse NWS ISO 8601 time intervals
+    function getValueAtTime(valuesArray, targetDate) {
+      if (!valuesArray || valuesArray.length === 0) return null;
+      for (let i = 0; i < valuesArray.length; i++) {
+        const parts = valuesArray[i].validTime.split("/");
+        const startTime = new Date(parts[0]);
+        let hours = 1;
+        
+        // Extract the duration string from NWS format (e.g. PT1H or P1D)
+        const match = parts[1].match(/PT(\d+)H/);
+        const dayMatch = parts[1].match(/P(\d+)D/);
+        
+        if (match) hours = parseInt(match[1]);
+        else if (dayMatch) hours = parseInt(dayMatch[1]) * 24;
+
+        const endTime = new Date(startTime.getTime() + (hours * 60 * 60 * 1000));
+        if (targetDate >= startTime && targetDate < endTime) return valuesArray[i].value;
+      }
+      return valuesArray[0].value; 
+    }
 
     async function fetchWeather() {
       try {
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error("Network response was not ok");
-        
-        const data = await response.json();
-        
-        // Grab the next 24 hours of forecast data
-        // Get the exact time right now
-        const now = new Date();
-        
-        // Filter out any NWS periods where the forecast hour has already passed
-        const futurePeriods = data.properties.periods.filter(period => new Date(period.endTime) > now);
-        
-        // Grab the next 36 hours from the filtered future data
-        const periods = futurePeriods.slice(0, 36);
+        // 1. Fetch grid endpoint from exact coordinates
+        const pointsRes = await fetch(pointsUrl);
+        if (!pointsRes.ok) throw new Error("Could not reach NWS points API");
+        const pointsData = await pointsRes.json();
+        const gridUrl = pointsData.properties.forecastGridData;
+
+        // 2. Fetch the raw meteorological grid data
+        const gridRes = await fetch(gridUrl);
+        if (!gridRes.ok) throw new Error("Could not reach NWS grid API");
+        const gridData = await gridRes.json();
+
+        const tempRaw = gridData.properties.temperature.values;
+        const windRaw = gridData.properties.windSpeed.values;
+        const gustRaw = gridData.properties.windGust.values;
+
         const tableBody = document.getElementById('tableBody');
         
-        periods.forEach(period => {
-          const row = document.createElement('tr');
+        // 3. Setup current time, rounded to the top of the hour
+        let now = new Date();
+        now.setMinutes(0, 0, 0);
+
+        // 4. Loop for the next 36 hours, jumping by 3 hours at a time to save vertical space
+        for (let i = 0; i < 36; i += 3) {
+          const targetTime = new Date(now.getTime() + (i * 60 * 60 * 1000));
           
-          // 1. Extract the specific number from the string (turns "20 mph" into 20)
-          const baseSpeed = parseInt(period.windSpeed) || 0;
+          // Get values and convert units (C to F, and KPH to MPH)
+          const tempC = getValueAtTime(tempRaw, targetTime);
+          const windKph = getValueAtTime(windRaw, targetTime);
+          const gustKph = getValueAtTime(gustRaw, targetTime);
+
+          const tempF = Math.round((tempC * 9/5) + 32);
+          const windMph = Math.round(windKph * 0.621371);
+          const gustMph = gustKph !== null ? Math.round(gustKph * 0.621371) : 0;
+
+          // 5. Apply Official Mackinac Bridge Authority Operational Thresholds
+          // Based on direct MBA feedback: Restrictions use the highest threat (sustained OR gust)
+          let status = "NORMAL";
+          let windClass = "wind-normal";
           
-          // 2. Extract the gust number if the NWS is forecasting one
-          let gustSpeed = 0;
-          let gustText = "";
-          if (period.windGust) {
-            gustSpeed = parseInt(period.windGust) || 0;
-            // Only add the extra text if the gust is actually present
-            if (gustSpeed > 0) {
-              gustText = `<br><small><i>Gusts: ${period.windGust}</i></small>`;
-            }
+          let maxWindThreat = Math.max(windMph, gustMph);
+          
+          if (maxWindThreat >= 65) {
+            status = "FULL CLOSURE";
+            windClass = "wind-full-closure";
+          } else if (maxWindThreat >= 50) {
+            status = "PARTIAL CLOSURE";
+            windClass = "wind-closure";
+          } else if (maxWindThreat >= 35) {
+            status = "ESCORTS REQ.";
+            windClass = "wind-escort";
+          } else if (maxWindThreat >= 20) {
+            status = "WIND ADVISORY";
+            windClass = "wind-advisory";
           }
+
+          // Format gusts for display
+          let gustText = gustMph > 0 ? `<br><small><i>Gusts: ${gustMph} mph</i></small>` : "";
           
-          // 3. Find the highest threat (sustained vs gust) for the MBA colors
-          const absoluteMaxWind = Math.max(baseSpeed, gustSpeed);
-          
-          // 4. Apply color rules based on Mackinac Bridge thresholds
-          let windClass = "";
-          if (absoluteMaxWind >= 50) {
-            windClass = "wind-closure"; // Partial Closure
-          } else if (absoluteMaxWind >= 35) {
-            windClass = "wind-escort";  // Escorts Required
-          } else if (absoluteMaxWind >= 20) {
-            windClass = "wind-advisory"; // High Wind Advisory
-          }
-          
-          // 5. Force Eastern Time for the Straits
-          const date = new Date(period.startTime);
-          const timeString = date.toLocaleTimeString('en-US', {
-            hour: 'numeric', 
-            weekday: 'short', 
-            timeZone: 'America/Detroit'
+          // Format Time for Eastern standard (Bridge timezone)
+          const timeString = targetTime.toLocaleTimeString('en-US', {
+            hour: 'numeric', weekday: 'short', timeZone: 'America/Detroit'
           });
 
-          // 6. Build the HTML row
+          // 6. Build the Row
+          const row = document.createElement('tr');
           row.innerHTML = `
             <td><strong>${timeString}</strong></td>
-            <td>${period.temperature}&deg;${period.temperatureUnit}</td>
-            <td><span class="${windClass}">${period.windSpeed} ${period.windDirection} ${gustText}</span></td>
-            <td>${period.shortForecast}</td>
+            <td>${tempF}&deg;F</td>
+            <td><span class="${windClass}">${windMph} mph</span> ${gustText}</td>
+            <td><strong><span class="${windClass}">${status}</span></strong></td>
           `;
           tableBody.appendChild(row);
-        });
-        
-        // Hide loading text and show the table
+        }
+
+        // 7. Hide loader and display table
         document.getElementById('loading').style.display = 'none';
         document.getElementById('weatherTable').style.display = 'table';
         
@@ -162,8 +212,8 @@
         console.error("NWS Fetch Error:", error);
       }
     }
-    
-    // Execute the function
+
+    // Execute
     fetchWeather();
   </script>
 </body>
