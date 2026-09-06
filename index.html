@@ -14,6 +14,7 @@
       width: 100%; 
       border-collapse: collapse; 
       font-size: 13px; 
+      text-align: center; /* Center aligns the data for easier column scanning */
     }
     th { 
       background-color: #1a2b4c; 
@@ -21,9 +22,12 @@
       top: 0; 
       padding: 8px; 
       border-bottom: 2px solid #2a4374; 
-      text-align: left; 
       color: #ffffff;
       z-index: 10;
+    }
+    /* Keep Time column left-aligned for readability */
+    th:first-child, td:first-child {
+      text-align: left;
     }
     td { 
       padding: 8px; 
@@ -49,7 +53,9 @@
         <th>Time</th>
         <th>Temp</th>
         <th>Clouds</th>
-        <th>Wind Speed (Mid-Span)</th>
+        <th>Wind (mph)</th>
+        <th>Gusts (mph)</th>
+        <th>Ice (in)</th>
         <th>Risk Level</th>
       </tr>
     </thead>
@@ -83,17 +89,19 @@
         const gridRes = await fetch(pointsData.properties.forecastGridData);
         const gridData = await gridRes.json();
 
+        // Extract parameters. We add a fallback for iceAccumulation since the NWS sometimes omits the array completely in summer.
         const tempRaw = gridData.properties.temperature.values;
         const windRaw = gridData.properties.windSpeed.values;
         const gustRaw = gridData.properties.windGust.values;
         const skyCoverRaw = gridData.properties.skyCover.values;
+        const iceRaw = gridData.properties.iceAccumulation ? gridData.properties.iceAccumulation.values : [];
 
         const tableBody = document.getElementById('tableBody');
         
         let now = new Date();
         now.setMinutes(0, 0, 0);
 
-        // Generates 48 hours of forecast in 3-hour steps to cleanly fill the taller vertical view
+        // Generates 48 hours of forecast in 3-hour steps
         for (let i = 0; i < 48; i += 3) {
           const targetTime = new Date(now.getTime() + (i * 60 * 60 * 1000));
           
@@ -101,11 +109,15 @@
           const windKph = getValueAtTime(windRaw, targetTime);
           const gustKph = getValueAtTime(gustRaw, targetTime);
           const skyCoverPct = getValueAtTime(skyCoverRaw, targetTime);
+          const iceMm = getValueAtTime(iceRaw, targetTime);
 
           const tempF = Math.round((tempC * 9/5) + 32);
           const windMph = Math.round(windKph * 0.621371);
           const gustMph = gustKph !== null ? Math.round(gustKph * 0.621371) : 0;
           const clouds = skyCoverPct !== null ? Math.round(skyCoverPct) : 0;
+          
+          // Convert Ice from millimeters to inches and force 2 decimal places
+          const iceInches = iceMm !== null ? (iceMm * 0.0393701).toFixed(2) : "0.00";
 
           // MBA Operational Logic (Max Threat: Sustained vs Gust)
           let status = "NORMAL", windClass = "wind-normal";
@@ -116,15 +128,17 @@
           else if (maxWindThreat >= 35) { status = "ESCORTS REQ."; windClass = "wind-escort"; }
           else if (maxWindThreat >= 20) { status = "WIND ADVISORY"; windClass = "wind-advisory"; }
 
-          let gustText = gustMph > 0 ? `<br><small><i>Gusts: ${gustMph} mph</i></small>` : "";
           const timeString = targetTime.toLocaleTimeString('en-US', { hour: 'numeric', weekday: 'short', timeZone: 'America/Detroit' });
+          const displayGust = gustMph > 0 ? gustMph : "-";
 
           const row = document.createElement('tr');
           row.innerHTML = `
             <td><strong>${timeString}</strong></td>
             <td>${tempF}&deg;F</td>
             <td>${clouds}%</td>
-            <td><span class="${windClass}">${windMph} mph</span> ${gustText}</td>
+            <td><span class="${windClass}">${windMph}</span></td>
+            <td><span class="${windClass}">${displayGust}</span></td>
+            <td>${iceInches}</td>
             <td><strong><span class="${windClass}">${status}</span></strong></td>
           `;
           tableBody.appendChild(row);
