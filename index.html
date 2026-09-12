@@ -125,7 +125,7 @@
           if (maxWindThreat >= 65) { status = "FULL CLOSURE"; windClass = "wind-full-closure"; }
           else if (maxWindThreat >= 50) { status = "PARTIAL CLOSURE"; windClass = "wind-closure"; }
           else if (maxWindThreat >= 35) { status = "ESCORTS REQ."; windClass = "wind-escort"; }
-          else if (maxWindThreat >= 20) { status = "WIND ADVISORY"; windClass = "wind-advisory"; }
+          else if (maxWindThreat >= 20) { status = "ADVISORY"; windClass = "wind-advisory"; }
 
           const timeString = targetTime.toLocaleTimeString('en-US', { hour: 'numeric', weekday: 'short', timeZone: 'America/Detroit' });
           const displayGust = gustMph > 0 ? gustMph : "-";
